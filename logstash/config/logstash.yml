@@ -1,0 +1,8 @@
+# Logstash settings for Docker
+# Ref: https://www.elastic.co/docs/reference/logstash/docker-config
+
+# Docker default: bind to all interfaces for API access
+api.http.host: "0.0.0.0"
+
+# Disable legacy X-Pack monitoring (use Elastic Agent instead in production)
+xpack.monitoring.enabled: false
