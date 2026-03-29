@@ -1,0 +1,2 @@
+# Protect secrets - never commit .env with real passwords
+.env

@@ -1,0 +1,117 @@
+# =============================================================================
+# Nextcloud with MariaDB + External Redis
+# =============================================================================
+# Nextcloud stable (32.x) with Apache, MariaDB 10.11 (recommended),
+# and external Redis for caching/file locking.
+#
+# Compatible with Docker Desktop (Windows) and Linux.
+#
+# References:
+#   - https://hub.docker.com/_/nextcloud
+#   - https://hub.docker.com/_/mariadb
+#   - https://docs.nextcloud.com/server/stable/admin_manual/installation/system_requirements.html
+# =============================================================================
+
+volumes:
+  nextcloud_data:
+    driver: local
+  mariadb_data:
+    driver: local
+
+# External network to connect to the pre-existing Redis container.
+# Create it before deploying: docker network create nextcloud_redis_network
+# Then connect your Redis container to it:
+#   docker network connect nextcloud_redis_network <redis_container_name>
+networks:
+  default:
+    name: nextcloud_internal
+    driver: bridge
+  redis_network:
+    name: nextcloud_redis_network
+    external: true
+
+services:
+  # ---------------------------------------------------------------------------
+  # MariaDB 10.11 (Recommended by Nextcloud)
+  # ---------------------------------------------------------------------------
+  # Nextcloud requires:
+  #   - InnoDB storage engine
+  #   - READ-COMMITTED transaction isolation level
+  #   - Binary logging with ROW format
+  # See: https://docs.nextcloud.com/server/stable/admin_manual/installation/system_requirements.html
+  # ---------------------------------------------------------------------------
+  db:
+    image: mariadb:10.11
+    container_name: nextcloud-db
+    restart: always
+    command: >-
+      --transaction-isolation=READ-COMMITTED
+      --log-bin=binlog
+      --binlog-format=ROW
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Nextcloud (stable - Apache)
+  # ---------------------------------------------------------------------------
+  # Uses apache variant with built-in web server on port 80.
+  # Auto-configured via environment variables (no manual setup wizard needed).
+  # Connects to MariaDB (db service) and external Redis container.
+  # ---------------------------------------------------------------------------
+  app:
+    image: nextcloud:stable
+    container_name: nextcloud-app
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - nextcloud_data:/var/www/html
+    environment:
+      # --- Database (MariaDB) ---
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+      # --- Nextcloud Admin ---
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+
+      # --- Trusted Domains ---
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS}
+
+      # --- Redis (External Container) ---
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_HOST_PORT: ${REDIS_HOST_PORT}
+      REDIS_HOST_PASSWORD: ${REDIS_HOST_PASSWORD}
+
+      # --- PHP Limits ---
+      PHP_MEMORY_LIMIT: ${PHP_MEMORY_LIMIT}
+      PHP_UPLOAD_LIMIT: ${PHP_UPLOAD_LIMIT}
+      APACHE_BODY_LIMIT: ${APACHE_BODY_LIMIT}
+
+      # --- Reverse Proxy (optional, uncomment in .env) ---
+      # APACHE_DISABLE_REWRITE_IP: ${APACHE_DISABLE_REWRITE_IP}
+      # TRUSTED_PROXIES: ${TRUSTED_PROXIES}
+      # OVERWRITEHOST: ${OVERWRITEHOST}
+      # OVERWRITEPROTOCOL: ${OVERWRITEPROTOCOL}
+      # OVERWRITECLIURL: ${OVERWRITECLIURL}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+      - redis_network
