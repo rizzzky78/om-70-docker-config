@@ -1,0 +1,29 @@
+# =============================================================================
+# Grafana Datasource Provisioning — Prometheus
+# =============================================================================
+# Official docs: https://grafana.com/docs/grafana/latest/administration/provisioning/
+#
+# This file is loaded automatically when Grafana starts.
+# Mount point in container: /etc/grafana/provisioning/datasources/
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # 'proxy' means Grafana server proxies requests to Prometheus (recommended)
+    access: proxy
+    # Use the Docker service name as the hostname — resolves within the monitoring network
+    url: http://prometheus:9090
+    # Mark as the default datasource
+    isDefault: true
+    # Grafana will not allow users to delete provisioned datasources
+    editable: false
+    jsonData:
+      # Timeout for Prometheus queries in seconds
+      timeInterval: "15s"
+      # Use POST instead of GET for larger queries
+      httpMethod: POST
+      # Prometheus v3+ metric name validation
+      prometheusVersion: "3.10.0"

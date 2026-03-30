@@ -1,0 +1,119 @@
+# =============================================================================
+# Prometheus Configuration
+# =============================================================================
+# Official docs: https://prometheus.io/docs/prometheus/latest/configuration/
+#
+# After editing this file you can reload without restarting Prometheus:
+#   curl -X POST http://localhost:9090/-/reload
+# =============================================================================
+
+global:
+  # Default scrape interval — overridden per-job below if needed
+  scrape_interval: 15s
+
+  # How often alert rules are evaluated
+  evaluation_interval: 15s
+
+  # Timeout for scrape requests (must be <= scrape_interval)
+  scrape_timeout: 10s
+
+  # Labels added to every time series scraped by this Prometheus instance.
+  # Use this to identify the source instance in a multi-datacenter setup.
+  external_labels:
+    monitor: "monitoring-stack"
+    environment: "production"
+
+# =============================================================================
+# Alerting — connect to Alertmanager (optional)
+# =============================================================================
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - alertmanager:9093
+
+# =============================================================================
+# Rule Files — alert and recording rules
+# =============================================================================
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# =============================================================================
+# Scrape Configurations
+# =============================================================================
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # ---------------------------------------------------------------------------
+  - job_name: "prometheus"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: "prometheus"
+
+  # ---------------------------------------------------------------------------
+  # Node.js / Next.js Application
+  # ---------------------------------------------------------------------------
+  # Replace the target(s) with your application's host:port.
+  # The metrics endpoint is typically /api/metrics (Next.js) or /metrics (Express).
+  #
+  # For Docker networks: use the container name and internal port.
+  # For external apps:   use the host IP/domain and exposed port.
+  # ---------------------------------------------------------------------------
+  - job_name: "nodejs-app"
+    scrape_interval: 15s
+    metrics_path: "/api/metrics"
+    # Optional: add Basic Auth if your /metrics endpoint is protected
+    # basic_auth:
+    #   username: "prometheus"
+    #   password: "secure_password"
+    static_configs:
+      - targets:
+          # Docker network target (container name):
+          #   - "your_app_container:3000"
+          # External / host target:
+          #   - "host.docker.internal:3000"    # Windows/macOS (Docker Desktop)
+          #   - "172.17.0.1:3000"              # Linux host from container
+          - "host.docker.internal:3000"
+        labels:
+          service: "nodejs-app"
+          environment: "production"
+
+  # ---------------------------------------------------------------------------
+  # Example: Multiple app instances with relabeling
+  # ---------------------------------------------------------------------------
+  # - job_name: "nodejs-app-multi"
+  #   scrape_interval: 15s
+  #   metrics_path: "/api/metrics"
+  #   static_configs:
+  #     - targets:
+  #         - "app1:3000"
+  #         - "app2:3000"
+  #       labels:
+  #         service: "nodejs-app"
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: instance
+
+  # ---------------------------------------------------------------------------
+  # Example: Express.js app (metrics at /metrics)
+  # ---------------------------------------------------------------------------
+  # - job_name: "express-app"
+  #   scrape_interval: 15s
+  #   metrics_path: "/metrics"
+  #   static_configs:
+  #     - targets: ["host.docker.internal:4000"]
+  #       labels:
+  #         service: "express-app"
+
+  # ---------------------------------------------------------------------------
+  # Example: Docker host system metrics via node_exporter
+  # (deploy node_exporter separately on the host)
+  # ---------------------------------------------------------------------------
+  # - job_name: "node-exporter"
+  #   scrape_interval: 30s
+  #   static_configs:
+  #     - targets: ["host.docker.internal:9100"]
+  #       labels:
+  #         service: "host-metrics"

@@ -1,0 +1,128 @@
+# =============================================================================
+# Prometheus Alert Rules
+# =============================================================================
+# Official docs: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+#
+# Reload without restart:
+#   curl -X POST http://localhost:9090/-/reload
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Infrastructure — instance availability
+  # ---------------------------------------------------------------------------
+  - name: infrastructure
+    interval: 30s
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: >
+            Target {{ $labels.job }}/{{ $labels.instance }} has been unreachable
+            for more than 1 minute.
+
+      - alert: PrometheusTargetMissing
+        expr: increase(prometheus_target_scrape_pool_targets[5m]) < 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus target(s) disappeared"
+          description: "A previously registered scrape target has gone missing."
+
+  # ---------------------------------------------------------------------------
+  # Node.js Application — HTTP & process health
+  # ---------------------------------------------------------------------------
+  - name: nodejs_app
+    interval: 30s
+    rules:
+      - alert: HighHTTPErrorRate
+        # Fires when >5% of requests return 5xx over the last 5 minutes.
+        # Adjust the metric name to match your prom-client histogram label.
+        expr: >
+          (
+            sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[5m])) by (job, instance)
+            /
+            sum(rate(http_request_duration_seconds_count[5m])) by (job, instance)
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate on {{ $labels.instance }}"
+          description: >
+            {{ $labels.job }}/{{ $labels.instance }} has a 5xx error rate of
+            {{ printf \"%.2f\" $value | humanizePercentage }} over the last 5 minutes.
+
+      - alert: HighP99Latency
+        # Fires when p99 latency exceeds 2 seconds.
+        expr: >
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, instance)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 HTTP latency on {{ $labels.instance }}"
+          description: >
+            p99 response time on {{ $labels.job }}/{{ $labels.instance }}
+            is {{ printf \"%.2fs\" $value }}.
+
+      - alert: HighNodeMemoryUsage
+        # NodeJS heap memory > 500 MB
+        expr: nodejs_heap_size_used_bytes > 524288000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Node.js heap memory usage on {{ $labels.instance }}"
+          description: >
+            Heap in use: {{ $value | humanize1024 }}B on
+            {{ $labels.job }}/{{ $labels.instance }}.
+
+      - alert: TooManyOpenFileDescriptors
+        # Process file descriptors > 80% of the soft limit
+        expr: >
+          process_open_fds / process_max_fds > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Too many open file descriptors on {{ $labels.instance }}"
+          description: >
+            {{ printf \"%.0f%%\" ($value * 100) }} of the file descriptor limit is used
+            on {{ $labels.job }}/{{ $labels.instance }}.
+
+  # ---------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # ---------------------------------------------------------------------------
+  - name: prometheus_self
+    interval: 60s
+    rules:
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus config reload failed"
+          description: "Prometheus failed to reload its configuration. Check the config file."
+
+      - alert: PrometheusTSDRetentionApproaching
+        # Warn when TSDB is > 80% of the retention size limit
+        expr: >
+          prometheus_tsdb_storage_blocks_bytes /
+          prometheus_tsdb_retention_limit_bytes > 0.8
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus TSDB storage nearing retention limit"
+          description: >
+            Prometheus storage is at {{ printf \"%.0f%%\" ($value * 100) }}
+            of the configured retention size limit.

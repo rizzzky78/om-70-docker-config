@@ -1,0 +1,28 @@
+# =============================================================================
+# Grafana Dashboard Provisioning
+# =============================================================================
+# Official docs: https://grafana.com/docs/grafana/latest/administration/provisioning/#dashboards
+#
+# Mount point in container: /etc/grafana/provisioning/dashboards/
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: "Monitoring Stack"
+    orgId: 1
+    # Folder name shown in the Grafana UI
+    folder: "Monitoring"
+    type: file
+    # Prevent users from accidentally deleting provisioned dashboards via UI
+    disableDeletion: true
+    # Allow users to edit dashboards in the UI (changes won't persist on restart
+    # unless you update the JSON file; set to false for strict GitOps workflows)
+    editable: true
+    # Reload dashboard files every 30 seconds (picks up any JSON file changes)
+    updateIntervalSeconds: 30
+    options:
+      # Path inside the container where Grafana looks for dashboard JSON files
+      path: /etc/grafana/provisioning/dashboards
+      # Allows dashboard files in subdirectories
+      foldersFromFilesStructure: false
